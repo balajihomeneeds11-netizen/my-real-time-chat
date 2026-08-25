@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Real-Time Chat</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#eef2f7;color:#172033}
+.app{max-width:850px;height:100vh;margin:auto;background:#fff;display:flex;flex-direction:column}
+header{padding:14px 16px;border-bottom:1px solid #ddd;display:flex;justify-content:space-between;align-items:center}
+h2{margin:0;font-size:20px}.room{font-size:12px;color:#666}
+.messages{flex:1;overflow:auto;padding:18px}
+.msg{max-width:78%;margin:9px 0;padding:10px 13px;border-radius:15px;white-space:pre-wrap;word-break:break-word}
+.me{margin-left:auto;background:#dbeafe}.other{margin-right:auto;background:#eee}
+.name{font-size:11px;font-weight:bold;margin-bottom:4px}.time{font-size:10px;color:#777;margin-top:5px}
+.tools{display:flex;gap:5px;margin-top:6px}.tools button{border:0;border-radius:6px;padding:4px 7px;cursor:pointer}
+.composer{display:flex;gap:8px;padding:12px;border-top:1px solid #ddd}
+input,textarea{border:1px solid #ccc;border-radius:10px;padding:10px;font:inherit}
+#name{width:115px}.text{flex:1;resize:none}.send{background:#2563eb;color:#fff;border:0;border-radius:10px;padding:10px 15px;font-weight:bold}
+.status{font-size:11px;color:#777;padding:5px 12px;text-align:center}
+</style>
+</head>
+<body>
+<div class="app">
+<header><div><h2>Real-Time Chat</h2><div class="room">Room: <b id="roomLabel"></b></div></div><div id="status">Connecting…</div></header>
+<div id="messages" class="messages"></div>
+<div class="status">Messages sync live between people using the same room link.</div>
+<div class="composer">
+<input id="name" maxlength="30" placeholder="Your name">
+<textarea id="text" class="text" rows="1" placeholder="Type anything…"></textarea>
+<button class="send" id="send">Send</button>
+</div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+import { getDatabase, ref, push, onValue, update, remove } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDO9XtgudI-IXQQ-SaRDGY_YuVRsNoirbg",
+  authDomain: "my-real-time-chat-81f65.firebaseapp.com",
+  databaseURL: "https://my-real-time-chat-81f65-default-rtdb.firebaseio.com",
+  projectId: "my-real-time-chat-81f65",
+  storageBucket: "my-real-time-chat-81f65.firebasestorage.app",
+  messagingSenderId: "432054593558",
+  appId: "1:432054593558:web:dcfde041c5d42e03612d37"
+};
+
+const qs = new URLSearchParams(location.search);
+let room = qs.get("room");
+if(!room){ room = Math.random().toString(36).slice(2,8); history.replaceState({}, "", "?room="+room); }
+document.getElementById("roomLabel").textContent=room;
+
+const nameEl=document.getElementById("name"), textEl=document.getElementById("text");
+nameEl.value=localStorage.getItem("chatName")||"";
+const messagesEl=document.getElementById("messages"), statusEl=document.getElementById("status");
+
+const app=initializeApp(firebaseConfig), db=getDatabase(app);
+const messagesRef=ref(db,"rooms/"+room+"/messages");
+
+function esc(s){return s}
+function render(data){
+ messagesEl.innerHTML="";
+ Object.entries(data||{}).sort((a,b)=>(a[1].createdAt||0)-(b[1].createdAt||0)).forEach(([id,m])=>{
+   const d=document.createElement("div"); d.className="msg "+(m.uid===clientId?"me":"other");
+   const n=document.createElement("div"); n.className="name"; n.textContent=m.name||"Guest";
+   const t=document.createElement("div"); t.textContent=m.text;
+   const tm=document.createElement("div"); tm.className="time"; tm.textContent=new Date(m.createdAt||Date.now()).toLocaleTimeString();
+   d.append(n,t,tm);
+   if(m.uid===clientId){
+     const tools=document.createElement("div"); tools.className="tools";
+     const edit=document.createElement("button"); edit.textContent="Edit";
+     const del=document.createElement("button"); del.textContent="Delete";
+     edit.onclick=()=>{const v=prompt("Edit message:",m.text); if(v!==null && v.trim()) update(ref(db,"rooms/"+room+"/messages/"+id),{text:v.trim()})};
+     del.onclick=()=>remove(ref(db,"rooms/"+room+"/messages/"+id));
+     tools.append(edit,del); d.appendChild(tools);
+   }
+   messagesEl.appendChild(d);
+ });
+ messagesEl.scrollTop=messagesEl.scrollHeight;
+}
+const clientId=localStorage.getItem("chatClientId")||crypto.randomUUID();
+localStorage.setItem("chatClientId",clientId);
+
+onValue(messagesRef,s=>{render(s.val());statusEl.textContent="● Live";},e=>{statusEl.textContent="Connection error";console.error(e)});
+
+function send(){
+ const text=textEl.value.trim(), name=(nameEl.value.trim()||"Guest");
+ if(!text)return;
+ localStorage.setItem("chatName",name);
+ push(messagesRef,{uid:clientId,name,text,createdAt:Date.now()});
+ textEl.value="";
+ textEl.focus();
+}
+document.getElementById("send").onclick=send;
+textEl.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}});
+</script>
+</body>
+</html>
